@@ -1,0 +1,7 @@
+{
+  "name": "TaskLaunch",
+  "description": "A fast, privacy-first Android home launcher with seamless task management built into the home screen experience.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

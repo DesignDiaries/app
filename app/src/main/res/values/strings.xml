@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">TaskLaunch</string>
+    <string name="launcher_tagline">Your home screen shows what you need to do</string>
+    <string name="search_placeholder">Search apps, tasks, or add with #tag !urgent…</string>
+    <string name="quick_add_hint">Add task… e.g. Call client tomorrow 10am !high #work</string>
+    <string name="set_as_default_launcher">Set as Default Launcher</string>
+    <string name="default_launcher_desc">Make TaskLaunch your home screen to see tasks every time you unlock</string>
+    <string name="today_tasks">Today\'s Tasks</string>
+    <string name="upcoming_tasks">Upcoming</string>
+    <string name="overdue_tasks">Overdue</string>
+    <string name="completed_tasks">Completed</string>
+    <string name="app_drawer">App Drawer</string>
+    <string name="task_panel">Task Feed</string>
+    <string name="home_screen">Home</string>
+    <string name="settings">Launcher Settings</string>
+    <string name="focus_mode">Focus Mode</string>
+    <string name="pomodoro">Focus Timer</string>
+    <string name="smart_strip_empty">All clear! No pending urgent tasks</string>
+</resources>

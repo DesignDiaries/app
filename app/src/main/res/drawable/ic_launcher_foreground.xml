@@ -1,0 +1,82 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Card Base with Soft Shadow -->
+    <path
+        android:fillColor="#15FFFFFF"
+        android:pathData="M28,26 h52 a12,12 0 0 1 12,12 v40 a12,12 0 0 1 -12,12 h-52 a12,12 0 0 1 -12,-12 v-40 a12,12 0 0 1 12,-12 z" />
+
+    <!-- Sleek Rounded Card Foreground -->
+    <path
+        android:fillColor="#222B45"
+        android:pathData="M28,28 h52 a10,10 0 0 1 10,10 v38 a10,10 0 0 1 -10,10 h-52 a10,10 0 0 1 -10,-10 v-38 a10,10 0 0 1 10,-10 z" />
+
+    <!-- Top Accent Bar (Productivity Header) -->
+    <path android:pathData="M34,36 h40 a2,2 0 0 1 2,2 v0 a2,2 0 0 1 -2,2 h-40 a2,2 0 0 1 -2,-2 v0 a2,2 0 0 1 2,-2 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="32"
+                android:startY="37"
+                android:endX="76"
+                android:endY="37"
+                android:type="linear">
+                <item android:color="#38BDF8" android:offset="0.0" />
+                <item android:color="#818CF8" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- First Task Item: Active Check Circle with Checkmark -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M36,49 m-5,0 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M33.5,49 L35.2,50.8 L38.5,47.2" />
+
+    <!-- Task 1 Text Line -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M45,47 h28 a2,2 0 0 1 2,2 v0 a2,2 0 0 1 -2,2 h-28 a2,2 0 0 1 -2,-2 v0 a2,2 0 0 1 2,-2 z" />
+
+    <!-- Second Task Item: Circle & Line -->
+    <path
+        android:fillColor="#6366F1"
+        android:pathData="M36,61 m-5,0 a5,5 0 1 0 10,0 a5,5 0 1 0 -10,0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M33.5,61 L35.2,62.8 L38.5,59.2" />
+
+    <!-- Task 2 Text Line -->
+    <path
+        android:fillColor="#94A3B8"
+        android:pathData="M45,59 h20 a2,2 0 0 1 2,2 v0 a2,2 0 0 1 -2,2 h-20 a2,2 0 0 1 -2,-2 v0 a2,2 0 0 1 2,-2 z" />
+
+    <!-- Lightning / Launch Flame Indicator -->
+    <path android:pathData="M71,67 L75,59 L71.5,59 L73,53 L67,61 L70,61 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="67"
+                android:startY="53"
+                android:endX="75"
+                android:endY="67"
+                android:type="linear">
+                <item android:color="#F59E0B" android:offset="0.0" />
+                <item android:color="#EF4444" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
+
