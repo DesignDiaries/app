@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,9 +22,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dock
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,16 +47,30 @@ import androidx.compose.ui.unit.sp
 import com.example.util.InstalledApp
 
 /**
- * Dialog allowing the user to customize the dock apps: reorder, remove, or add new apps to the home dock.
+ * Dialog allowing the user to customize the dock apps: reorder, remove, add, or reset dock apps.
  */
 @Composable
 fun EditDockDialog(
     currentDockPackages: List<String>,
     installedApps: List<InstalledApp>,
     onSaveDockApps: (List<String>) -> Unit,
+    onResetToDefaults: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    var dockList by remember { mutableStateOf(currentDockPackages) }
+    val defaultDockPackages = remember(installedApps) {
+        val preferred = installedApps.filter { app ->
+            val p = app.packageName.lowercase()
+            p.contains("dialer") || p.contains("phone") || p.contains("message") ||
+                    p.contains("chrome") || p.contains("browser") || p.contains("camera")
+        }
+        (if (preferred.size >= 4) preferred.take(4) else installedApps.take(4)).map { it.packageName }
+    }
+
+    var dockList by remember(currentDockPackages, defaultDockPackages) {
+        mutableStateOf(
+            if (currentDockPackages.isNotEmpty()) currentDockPackages else defaultDockPackages
+        )
+    }
     var searchFilter by remember { mutableStateOf("") }
     var isAddingApp by remember { mutableStateOf(false) }
 
@@ -65,39 +80,73 @@ fun EditDockDialog(
 
     val availableAppsToAdd = remember(installedApps, dockList, searchFilter) {
         val inDock = dockList.toSet()
-        installedApps.filter { it.packageName !in inDock && (searchFilter.isBlank() || it.label.contains(searchFilter, ignoreCase = true)) }
+        installedApps.filter {
+            it.packageName !in inDock && (searchFilter.isBlank() || it.label.contains(searchFilter, ignoreCase = true))
+        }
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Dock,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = "Edit Home Dock",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Dock,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Edit Home Dock",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+
+                // Reset to smart defaults button
+                IconButton(
+                    onClick = {
+                        dockList = defaultDockPackages
+                    },
+                    modifier = Modifier.size(28.dp).testTag("reset_dock_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.RestartAlt,
+                        contentDescription = "Reset to Defaults",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    .heightIn(max = 440.dp)
             ) {
-                Text(
-                    text = "Current Dock Apps (${dockList.size} / 5 max):",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Dock Apps (${dockList.size} / 5 slots):",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Long-press dock to quick-launch",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Current dock items list with reorder and delete
                 LazyColumn(
@@ -109,8 +158,8 @@ fun EditDockDialog(
                     items(dockList) { pkg ->
                         val app = appMap[pkg]
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -123,25 +172,25 @@ fun EditDockDialog(
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     if (app?.iconBitmap != null) {
-                                        androidx.compose.foundation.Image(
+                                        Image(
                                             bitmap = app.iconBitmap,
                                             contentDescription = null,
                                             modifier = Modifier
-                                                .size(28.dp)
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .size(32.dp)
+                                                .clip(RoundedCornerShape(8.dp))
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
                                     }
                                     Text(
                                         text = app?.label ?: pkg,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                                         maxLines = 1
                                     )
                                 }
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     val idx = dockList.indexOf(pkg)
-                                    // Move up
+                                    // Move up (earlier slot)
                                     IconButton(
                                         onClick = {
                                             if (idx > 0) {
@@ -152,7 +201,7 @@ fun EditDockDialog(
                                             }
                                         },
                                         enabled = idx > 0,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(30.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.KeyboardArrowUp,
@@ -161,7 +210,7 @@ fun EditDockDialog(
                                         )
                                     }
 
-                                    // Move down
+                                    // Move down (later slot)
                                     IconButton(
                                         onClick = {
                                             if (idx < dockList.size - 1) {
@@ -172,7 +221,7 @@ fun EditDockDialog(
                                             }
                                         },
                                         enabled = idx < dockList.size - 1,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(30.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.KeyboardArrowDown,
@@ -186,7 +235,7 @@ fun EditDockDialog(
                                         onClick = {
                                             dockList = dockList.filter { it != pkg }
                                         },
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(30.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Delete,
@@ -241,7 +290,7 @@ fun EditDockDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Select App to Add:",
+                                text = "Choose an app to add:",
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                             )
                             IconButton(onClick = { isAddingApp = false }, modifier = Modifier.size(24.dp)) {
@@ -280,11 +329,11 @@ fun EditDockDialog(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     if (app.iconBitmap != null) {
-                                        androidx.compose.foundation.Image(
+                                        Image(
                                             bitmap = app.iconBitmap,
                                             contentDescription = null,
                                             modifier = Modifier
-                                                .size(24.dp)
+                                                .size(26.dp)
                                                 .clip(RoundedCornerShape(6.dp))
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))

@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -118,19 +119,23 @@ fun AppDrawerSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = null,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+            )
+        },
         modifier = Modifier.testTag("app_drawer_sheet")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 16.dp)
+                .padding(bottom = 16.dp)
         ) {
             // Search Bar & Close Button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
@@ -317,7 +322,11 @@ fun AppDrawerSheet(
             Spacer(modifier = Modifier.height(10.dp))
 
             // Main App Grid (4 Columns) with alphabet scroll
-            Row(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
                     state = gridState,
@@ -326,7 +335,7 @@ fun AppDrawerSheet(
                         .fillMaxSize()
                         .padding(horizontal = 8.dp)
                         .testTag("app_drawer_grid"),
-                    contentPadding = PaddingValues(vertical = 8.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(filteredApps, key = { it.packageName }) { app ->

@@ -146,6 +146,7 @@ fun LauncherRootApp(
     // Installed apps & folders
     val installedApps by viewModel.installedApps.collectAsStateWithLifecycle()
     val customFolders by viewModel.customFolders.collectAsStateWithLifecycle()
+    val customDockApps by viewModel.customDockApps.collectAsStateWithLifecycle()
     val categorizedTasks by viewModel.categorizedTasks.collectAsStateWithLifecycle()
     val allTasksWithSubtasks by viewModel.allTasksWithSubtasks.collectAsStateWithLifecycle()
     val allLists by viewModel.allLists.collectAsStateWithLifecycle()
@@ -301,6 +302,9 @@ fun LauncherRootApp(
                                 tasksWithSubtasks = allTasksWithSubtasks,
                                 installedApps = installedApps,
                                 customFolders = customFolders,
+                                customDockApps = customDockApps,
+                                onSaveDockApps = { viewModel.setDockApps(it) },
+                                onResetDockApps = { viewModel.resetDockAppsToDefault(installedApps) },
                                 activeFocusMode = settings.activeFocusMode,
                                 pendingTasksCount = pendingCount,
                                 isZenGlanceMode = settings.zenGlanceMode,

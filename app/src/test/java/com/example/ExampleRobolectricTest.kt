@@ -81,5 +81,21 @@ class ExampleRobolectricTest {
     val updatedHabit = vm.habits.value.first { it.id == firstHabitId }
     assertEquals(!initialStatus, updatedHabit.isCompleted)
   }
+
+  @Test
+  fun `test dock customization and reset`() {
+    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.LauncherViewModel(application)
+
+    val customList = listOf("com.example.app1", "com.example.app2")
+    vm.setDockApps(customList)
+    assertEquals(customList, vm.customDockApps.value)
+
+    vm.addAppToDock("com.example.app3")
+    assertTrue(vm.customDockApps.value.contains("com.example.app3"))
+
+    vm.removeAppFromDock("com.example.app1")
+    assertTrue(!vm.customDockApps.value.contains("com.example.app1"))
+  }
 }
 

@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -46,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -55,12 +59,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.CustomAppFolder
@@ -72,6 +82,7 @@ import com.example.data.model.TaskWithSubtasks
 import com.example.ui.components.AppIconView
 import com.example.ui.components.DockDragGestureOverlay
 import com.example.ui.components.DockTargetItem
+import com.example.ui.components.EditDockDialog
 import com.example.ui.components.FolderContentsDialog
 import com.example.ui.components.FolderEditorDialog
 import com.example.ui.components.FolderIconView
@@ -79,7 +90,9 @@ import com.example.ui.components.SmartStrip
 import com.example.ui.components.TaskItemView
 import com.example.ui.viewmodel.PomodoroState
 import com.example.util.InstalledApp
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -91,6 +104,9 @@ fun HomeScreen(
     tasksWithSubtasks: List<TaskWithSubtasks>,
     installedApps: List<InstalledApp>,
     customFolders: List<CustomAppFolder> = emptyList(),
+    customDockApps: List<String> = emptyList(),
+    onSaveDockApps: (List<String>) -> Unit = {},
+    onResetDockApps: () -> Unit = {},
     activeFocusMode: FocusMode,
     pendingTasksCount: Int,
     isZenGlanceMode: Boolean = false,
@@ -141,51 +157,176 @@ fun HomeScreen(
             ?: pending.firstOrNull()
     }
 
-    // Pinned Dock apps: take Phone, Messages, Camera, Chrome, or first 4 apps
-    val dockApps = remember(installedApps) {
-        val preferred = installedApps.filter { app ->
-            val p = app.packageName.lowercase()
-            p.contains("dialer") || p.contains("phone") || p.contains("message") ||
-                    p.contains("chrome") || p.contains("browser") || p.contains("camera")
+    // Pinned Dock apps: Use customDockApps if set by user, otherwise fallback to smart preferred defaults
+    val dockApps = remember(installedApps, customDockApps) {
+        if (customDockApps.isNotEmpty()) {
+            val appMap = installedApps.associateBy { it.packageName }
+            val custom = customDockApps.mapNotNull { appMap[it] }
+            if (custom.isNotEmpty()) custom else {
+                val preferred = installedApps.filter { app ->
+                    val p = app.packageName.lowercase()
+                    p.contains("dialer") || p.contains("phone") || p.contains("message") ||
+                            p.contains("chrome") || p.contains("browser") || p.contains("camera")
+                }
+                if (preferred.size >= 4) preferred.take(4) else installedApps.take(4)
+            }
+        } else {
+            val preferred = installedApps.filter { app ->
+                val p = app.packageName.lowercase()
+                p.contains("dialer") || p.contains("phone") || p.contains("message") ||
+                        p.contains("chrome") || p.contains("browser") || p.contains("camera")
+            }
+            if (preferred.size >= 4) preferred.take(4) else installedApps.take(4)
         }
-        if (preferred.size >= 4) preferred.take(4) else installedApps.take(4)
     }
 
     val pinnedFolders = remember(customFolders) {
         customFolders.filter { it.isPinnedToDock }
     }
 
+    // Favorite Folder: Custom folder named "Favorite" / "Favorites", or smart defaults
+    val favoriteFolder = remember(customFolders, installedApps) {
+        val found = customFolders.firstOrNull {
+            it.name.equals("favorite", ignoreCase = true) || it.name.equals("favorites", ignoreCase = true)
+        }
+        if (found != null && found.packageNames.isNotEmpty()) {
+            found
+        } else {
+            val preferred = installedApps.filter { app ->
+                val p = app.packageName.lowercase()
+                p.contains("dialer") || p.contains("phone") || p.contains("message") ||
+                        p.contains("chrome") || p.contains("browser") || p.contains("camera") ||
+                        p.contains("photo") || p.contains("gallery") || p.contains("mail") ||
+                        p.contains("map") || p.contains("clock")
+            }.map { it.packageName }.distinct().take(6)
+
+            val fallbackPkgs = if (preferred.isNotEmpty()) preferred else installedApps.take(6).map { it.packageName }
+            CustomAppFolder(
+                id = "favorites_default",
+                name = "Favorites",
+                iconName = "STAR",
+                colorHex = "#F59E0B",
+                packageNames = fallbackPkgs,
+                isPinnedToDock = false,
+                isPreset = true
+            )
+        }
+    }
+
     var openedFolderInHome by remember { mutableStateOf<CustomAppFolder?>(null) }
     var editingFolderInHome by remember { mutableStateOf<CustomAppFolder?>(null) }
+    var isEditDockOpen by remember { mutableStateOf(false) }
 
-    // Swipe down on empty areas to toggle Zen Glance Mode
+    // Long-press Drag-to-Launch state (for Favorites folder on Apps button long-press)
+    var isGestureActive by remember { mutableStateOf(false) }
+    var touchPositionInWindow by remember { mutableStateOf(Offset.Zero) }
+    var hoveredTargetId by remember { mutableStateOf<String?>(null) }
+    var gestureTargetItems by remember { mutableStateOf<List<DockTargetItem>>(emptyList()) }
+    val targetBoundsMap = remember { mutableStateMapOf<String, Rect>() }
+    var dockPositionInWindow by remember { mutableStateOf(Offset.Zero) }
+    var dockSize by remember { mutableStateOf(IntSize.Zero) }
+    val haptic = LocalHapticFeedback.current
+
+    fun startGestureForFavorites(startLocalPos: Offset) {
+        val favApps = favoriteFolder.packageNames.mapNotNull { pkg ->
+            installedApps.firstOrNull { it.packageName == pkg }
+        }
+        val appsToShow = if (favApps.isNotEmpty()) favApps else installedApps.take(6)
+        val items = appsToShow.map { app ->
+            DockTargetItem(
+                id = "fav_${app.packageName}",
+                title = app.label,
+                packageName = app.packageName,
+                isFolder = false,
+                app = app
+            )
+        }
+        gestureTargetItems = items
+        touchPositionInWindow = dockPositionInWindow + startLocalPos
+        hoveredTargetId = null
+        targetBoundsMap.clear()
+        isGestureActive = true
+    }
+
+    fun updateDragPosition(localPos: Offset) {
+        touchPositionInWindow = dockPositionInWindow + localPos
+        val hovered = targetBoundsMap.entries.firstOrNull { (_, rect) ->
+            val inflated = Rect(rect.left - 38f, rect.top - 38f, rect.right + 38f, rect.bottom + 38f)
+            inflated.contains(touchPositionInWindow)
+        }?.key
+        if (hovered != hoveredTargetId) {
+            if (hovered != null) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            }
+            hoveredTargetId = hovered
+        }
+    }
+
+    fun finishDragGesture() {
+        val target = gestureTargetItems.firstOrNull { it.id == hoveredTargetId }
+        if (target != null) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            when {
+                target.actionType == "EDIT_DOCK" -> {
+                    isEditDockOpen = true
+                }
+                target.actionType == "EDIT_FOLDER" && target.folder != null -> {
+                    editingFolderInHome = target.folder
+                }
+                target.actionType == "APP_DRAWER" -> {
+                    onOpenAppDrawer()
+                }
+                target.actionType == "SEARCH" -> {
+                    onOpenSearch()
+                }
+                target.isFolder && target.folder != null -> {
+                    openedFolderInHome = target.folder
+                }
+                target.packageName != null -> {
+                    onLaunchApp(target.packageName)
+                }
+            }
+        }
+        isGestureActive = false
+        hoveredTargetId = null
+        targetBoundsMap.clear()
+    }
+
+    // Swipe down on empty areas to toggle Zen Glance Mode or Open Search
     var dragAccumulator by remember { mutableStateOf(0f) }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .testTag("home_screen")
-            .pointerInput(isZenGlanceMode) {
-                detectVerticalDragGestures(
-                    onDragStart = { dragAccumulator = 0f },
-                    onDragEnd = {
-                        if (dragAccumulator > 120f) {
-                            // Swiped down -> Toggle Zen Glance mode
-                            onToggleZenGlanceMode()
-                        } else if (dragAccumulator < -120f && isZenGlanceMode) {
-                            // Swiped up in Zen Glance -> Exit to standard mode
-                            onToggleZenGlanceMode()
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("home_screen")
+                .pointerInput(isZenGlanceMode) {
+                    detectVerticalDragGestures(
+                        onDragStart = { dragAccumulator = 0f },
+                        onDragEnd = {
+                            if (dragAccumulator > 280f) {
+                                // Deep swiped down -> Toggle Zen Glance mode
+                                onToggleZenGlanceMode()
+                            } else if (dragAccumulator > 70f) {
+                                // Gentle swiped down -> Open Universal Search!
+                                onOpenSearch()
+                            } else if (dragAccumulator < -70f) {
+                                if (isZenGlanceMode) {
+                                    onToggleZenGlanceMode()
+                                } else {
+                                    onOpenAppDrawer()
+                                }
+                            }
+                            dragAccumulator = 0f
+                        },
+                        onVerticalDrag = { _, dragAmount ->
+                            dragAccumulator += dragAmount
                         }
-                        dragAccumulator = 0f
-                    },
-                    onVerticalDrag = { _, dragAmount ->
-                        dragAccumulator += dragAmount
-                    }
-                )
-            }
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
+                    )
+                }
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
         // TOP: Settings button, Zen toggle, Clock & Universal Search Bar
         Column {
             Spacer(modifier = Modifier.height(16.dp))
@@ -734,9 +875,91 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp)
+                        .onGloballyPositioned { coords ->
+                            dockPositionInWindow = coords.positionInWindow()
+                            dockSize = coords.size
+                        }
+                        .pointerInput(dockApps, pinnedFolders, favoriteFolder) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                var currentPos = down.position
+                                var isLongPress = false
+                                val appsButtonIndex = dockApps.size + pinnedFolders.size
+                                val totalSlots = (appsButtonIndex + 1).coerceAtLeast(1)
+                                val slotWidth = if (dockSize.width > 0) dockSize.width.toFloat() / totalSlots else 100f
+                                val slotIndex = (down.position.x / slotWidth).toInt().coerceIn(0, totalSlots - 1)
+
+                                var tapOrSwipeHandled = false
+                                try {
+                                    withTimeout(350L) {
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Main)
+                                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                            if (change.changedToUp()) {
+                                                tapOrSwipeHandled = true
+                                                val dy = change.position.y - down.position.y
+                                                val dist = (change.position - down.position).getDistance()
+                                                if (dy < -45f) {
+                                                    // Swipe up gesture on dock -> Open App Drawer
+                                                    onOpenAppDrawer()
+                                                } else if (dist < 25f) {
+                                                    // Tap on item
+                                                    if (slotIndex < dockApps.size) {
+                                                        onLaunchApp(dockApps[slotIndex].packageName)
+                                                    } else if (slotIndex < appsButtonIndex) {
+                                                        openedFolderInHome = pinnedFolders[slotIndex - dockApps.size]
+                                                    } else {
+                                                        onOpenAppDrawer()
+                                                    }
+                                                }
+                                                break
+                                            }
+                                            if ((change.position - down.position).getDistance() > 30f) {
+                                                val dy = change.position.y - down.position.y
+                                                if (dy < -45f) {
+                                                    tapOrSwipeHandled = true
+                                                    // Swipe up gesture on dock
+                                                    onOpenAppDrawer()
+                                                    break
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (_: TimeoutCancellationException) {
+                                    if (!tapOrSwipeHandled) {
+                                        // Long press confirmed!
+                                        isLongPress = true
+                                        down.consume()
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (slotIndex == appsButtonIndex) {
+                                            // Long press ON the Apps button -> Open Favorites folder with Drag-to-Launch!
+                                            startGestureForFavorites(down.position)
+                                        } else {
+                                            // Long press ANYWHERE ELSE on the dock (apps, folders, or empty dock space) -> Edit Dock!
+                                            isEditDockOpen = true
+                                        }
+                                    }
+                                }
+
+                                if (isLongPress && slotIndex == appsButtonIndex) {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Main)
+                                        val change = event.changes.firstOrNull { it.id == down.id }
+                                        if (change == null || change.changedToUp()) {
+                                            change?.consume()
+                                            finishDragGesture()
+                                            break
+                                        }
+                                        change.consume()
+                                        currentPos = change.position
+                                        updateDragPosition(currentPos)
+                                    }
+                                }
+                            }
+                        }
                         .testTag("home_dock"),
                     shape = RoundedCornerShape(26.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.94f),
                     tonalElevation = 4.dp
                 ) {
                     Row(
@@ -754,7 +977,7 @@ fun HomeScreen(
                                 showLabel = false,
                                 isRestricted = isAppRestricted(app),
                                 onClick = { onLaunchApp(app.packageName) },
-                                onLongClick = { onAppLongClick(app) }
+                                onLongClick = { isEditDockOpen = true }
                             )
                         }
 
@@ -770,7 +993,7 @@ fun HomeScreen(
                             )
                         }
 
-                        // App Drawer Trigger Button
+                        // App Drawer Trigger Button (Long press opens Favorites Drag-to-Launch!)
                         Box(
                             modifier = Modifier
                                 .size(46.dp)
@@ -791,6 +1014,35 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // Dock Drag & Release Gesture Overlay for Favorites
+    DockDragGestureOverlay(
+        isActive = isGestureActive,
+        touchPosition = touchPositionInWindow,
+        targetItems = gestureTargetItems,
+        folderTitle = "Favorites",
+        hoveredTargetId = hoveredTargetId,
+        onTargetBoundsReported = { id, bounds ->
+            targetBoundsMap[id] = bounds
+        }
+    )
+
+    // Edit Dock Dialog
+    if (isEditDockOpen) {
+        EditDockDialog(
+            currentDockPackages = customDockApps.ifEmpty { dockApps.map { it.packageName } },
+            installedApps = installedApps,
+            onSaveDockApps = { updatedPkgs ->
+                onSaveDockApps(updatedPkgs)
+                isEditDockOpen = false
+            },
+            onResetToDefaults = {
+                onResetDockApps()
+                isEditDockOpen = false
+            },
+            onDismiss = { isEditDockOpen = false }
+        )
     }
 
     // Contents dialog for clicked folder in home dock
@@ -830,5 +1082,6 @@ fun HomeScreen(
             },
             onDismiss = { editingFolderInHome = null }
         )
+    }
     }
 }

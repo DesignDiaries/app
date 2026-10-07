@@ -721,6 +721,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun resetDockAppsToDefault(installedApps: List<InstalledApp>) {
+        val preferred = installedApps.filter { app ->
+            val p = app.packageName.lowercase()
+            p.contains("dialer") || p.contains("phone") || p.contains("message") ||
+                    p.contains("chrome") || p.contains("browser") || p.contains("camera")
+        }
+        val defaultPkgs = (if (preferred.size >= 4) preferred.take(4) else installedApps.take(4)).map { it.packageName }
+        launcherRepository.setDockApps(defaultPkgs)
+        viewModelScope.launch {
+            _snackbarEvent.emit("Home dock reset to defaults")
+        }
+    }
+
     fun addAppToDock(packageName: String) {
         launcherRepository.addAppToDock(packageName)
         viewModelScope.launch {
