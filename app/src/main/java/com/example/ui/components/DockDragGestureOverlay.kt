@@ -11,6 +11,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -89,6 +91,7 @@ fun DockDragGestureOverlay(
     folderTitle: String = "FAVORITES",
     hoveredTargetId: String?,
     onTargetBoundsReported: (String, Rect) -> Unit,
+    onDismiss: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (!isActive) return
@@ -100,6 +103,9 @@ fun DockDragGestureOverlay(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.45f))
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onDismiss() })
+            }
             .testTag("dock_drag_gesture_overlay")
     ) {
         // Drag guide tooltip banner near top
@@ -140,14 +146,12 @@ fun DockDragGestureOverlay(
             }
         }
 
-        // Floating fan / shelf of items positioned right above the touch point
-        val popupY = (touchPosition.y - with(density) { 210.dp.toPx() })
-            .coerceIn(with(density) { 90.dp.toPx() }, with(density) { 560.dp.toPx() })
-
+        // Floating folder shelf positioned stationarily right above the dock
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(0, popupY.roundToInt()) },
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 96.dp)
+                .fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
             Surface(
@@ -157,7 +161,7 @@ fun DockDragGestureOverlay(
                 shadowElevation = 16.dp,
                 border = androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
                 modifier = Modifier
-                    .padding(horizontal = 12.dp)
+                    .padding(horizontal = 14.dp)
                     .clip(RoundedCornerShape(28.dp))
             ) {
                 Column(
