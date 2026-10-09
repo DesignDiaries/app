@@ -1,5 +1,4 @@
 package com.example.ui.screens
-
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -64,6 +63,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
@@ -927,7 +927,7 @@ fun HomeScreen(
                                                 }
                                             }
                                         }
-                                    } catch (_: TimeoutCancellationException) {
+                                    } catch (_: PointerEventTimeoutCancellationException) {
                                         // Long press confirmed on the App List icon! Shows Rotating/Spinning Wheel Widget!
                                         isLongPress = true
                                         down.consume()
