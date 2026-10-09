@@ -65,9 +65,13 @@ object NaturalLanguageParser {
         val priorityMatcher = PRIORITY_REGEX.matcher(text)
         if (priorityMatcher.find()) {
             val pStr = priorityMatcher.group(1)
-            detectedPriority = Priority.fromString(pStr)
-            val matched = priorityMatcher.group(0)!!
-            text = text.replaceFirst(matched, " ")
+            if (pStr != null) {
+                detectedPriority = Priority.fromString(pStr)
+            }
+            val matched = priorityMatcher.group(0)
+            if (matched != null) {
+                text = text.replaceFirst(Pattern.quote(matched).toRegex(), " ")
+            }
         }
 
         // 3. Extract Recurrence
@@ -82,8 +86,10 @@ object NaturalLanguageParser {
                 recStr.contains("month") || recStr == "monthly" -> Recurrence.MONTHLY
                 else -> Recurrence.NONE
             }
-            val matched = recMatcher.group(0)!!
-            text = text.replaceFirst(matched, " ")
+            val matched = recMatcher.group(0)
+            if (matched != null) {
+                text = text.replaceFirst(Pattern.quote(matched).toRegex(), " ")
+            }
         }
 
         // 4. Extract Time
@@ -107,8 +113,10 @@ object NaturalLanguageParser {
                 detectedMinutes = hour * 60 + min
                 timeLabel = String.format(Locale.getDefault(), "%02d:%02d", hour, min)
             }
-            val matched = timeMatcher.group(0)!!
-            text = text.replaceFirst(matched, " ")
+            val matched = timeMatcher.group(0)
+            if (matched != null) {
+                text = text.replaceFirst(Pattern.quote(matched).toRegex(), " ")
+            }
         }
 
         // 5. Extract Date
@@ -200,7 +208,7 @@ object NaturalLanguageParser {
             .trim()
 
         return ParsedTaskInput(
-            cleanTitle = if (cleanTitle.isNotBlank()) cleanTitle else input.trim(),
+            cleanTitle = cleanTitle,
             priority = detectedPriority,
             dueDate = detectedDate,
             dueTimeMinutes = detectedMinutes,

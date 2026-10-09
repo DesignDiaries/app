@@ -284,24 +284,37 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private val togglingTaskIds = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
+    private var isSavingTask = false
+    private var isApplyingTemplate = false
+
     fun submitQuickAdd() {
         val input = _quickAddText.value.trim()
-        if (input.isBlank()) return
+        if (input.isBlank()) {
+            _quickAddText.value = ""
+            _parsedPreview.value = null
+            return
+        }
+        _quickAddText.value = ""
+        _parsedPreview.value = null
 
         viewModelScope.launch {
             val listId = _selectedListFilter.value ?: 1L
             taskRepository.quickAddTaskWithNlp(input, defaultListId = listId)
-            _quickAddText.value = ""
-            _parsedPreview.value = null
             _snackbarEvent.emit("Task created")
         }
     }
 
     // Task Actions
     fun toggleTaskCompletion(task: TaskEntity) {
+        if (!togglingTaskIds.add(task.id)) return
         viewModelScope.launch {
-            val isDone = taskRepository.toggleTaskCompletion(task)
-            _snackbarEvent.emit(if (isDone) "Task completed! 🎉" else "Task restored")
+            try {
+                val isDone = taskRepository.toggleTaskCompletion(task)
+                _snackbarEvent.emit(if (isDone) "Task completed! 🎉" else "Task restored")
+            } finally {
+                togglingTaskIds.remove(task.id)
+            }
         }
     }
 
@@ -329,10 +342,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     val availableTemplates = taskRepository.availableTemplates
 
     fun createFromTemplate(template: com.example.data.repository.TaskTemplate) {
+        if (isApplyingTemplate) return
+        isApplyingTemplate = true
         viewModelScope.launch {
-            val listId = _selectedListFilter.value ?: 1L
-            taskRepository.createFromTemplate(template, defaultListId = listId)
-            _snackbarEvent.emit("Template '${template.title}' added to Today")
+            try {
+                val listId = _selectedListFilter.value ?: 1L
+                taskRepository.createFromTemplate(template, defaultListId = listId)
+                _snackbarEvent.emit("Template '${template.title}' added to Today")
+            } finally {
+                isApplyingTemplate = false
+            }
         }
     }
 
@@ -356,40 +375,46 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         reminderTime: Long?,
         subtasks: List<SubtaskEntity>
     ) {
+        if (isSavingTask) return
+        isSavingTask = true
         viewModelScope.launch {
-            if (id == 0L) {
-                taskRepository.createTask(
-                    title = title,
-                    notes = notes,
-                    priority = priority,
-                    dueDate = dueDate,
-                    dueTimeMinutes = dueTimeMinutes,
-                    listId = listId,
-                    tags = tags,
-                    recurrence = recurrence,
-                    linkedPackageName = linkedPackage,
-                    reminderTime = reminderTime,
-                    subtaskTitles = subtasks.map { it.title }
-                )
-                _snackbarEvent.emit("Task created")
-            } else {
-                val updated = TaskEntity(
-                    id = id,
-                    title = title,
-                    notes = notes,
-                    priority = priority,
-                    dueDate = dueDate,
-                    dueTimeMinutes = dueTimeMinutes,
-                    listId = listId,
-                    tags = tags,
-                    recurrence = recurrence,
-                    linkedPackageName = linkedPackage,
-                    reminderTime = reminderTime
-                )
-                taskRepository.updateTask(updated, subtasks)
-                _snackbarEvent.emit("Task updated")
+            try {
+                if (id == 0L) {
+                    taskRepository.createTask(
+                        title = title,
+                        notes = notes,
+                        priority = priority,
+                        dueDate = dueDate,
+                        dueTimeMinutes = dueTimeMinutes,
+                        listId = listId,
+                        tags = tags,
+                        recurrence = recurrence,
+                        linkedPackageName = linkedPackage,
+                        reminderTime = reminderTime,
+                        subtaskTitles = subtasks.map { it.title }
+                    )
+                    _snackbarEvent.emit("Task created")
+                } else {
+                    val updated = TaskEntity(
+                        id = id,
+                        title = title,
+                        notes = notes,
+                        priority = priority,
+                        dueDate = dueDate,
+                        dueTimeMinutes = dueTimeMinutes,
+                        listId = listId,
+                        tags = tags,
+                        recurrence = recurrence,
+                        linkedPackageName = linkedPackage,
+                        reminderTime = reminderTime
+                    )
+                    taskRepository.updateTask(updated, subtasks)
+                    _snackbarEvent.emit("Task updated")
+                }
+                closeTaskDetail()
+            } finally {
+                isSavingTask = false
             }
-            closeTaskDetail()
         }
     }
 
@@ -587,6 +612,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 isRunning = true,
                 linkedTaskTitle = title
             )
+            pomodoroJob?.cancel()
             pomodoroJob = viewModelScope.launch {
                 while (_pomodoroState.value.secondsRemaining > 0 && _pomodoroState.value.isRunning) {
                     delay(1000)

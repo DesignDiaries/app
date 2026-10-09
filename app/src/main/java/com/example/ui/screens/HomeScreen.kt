@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,8 +83,6 @@ import com.example.data.model.SubtaskEntity
 import com.example.data.model.TaskEntity
 import com.example.data.model.TaskWithSubtasks
 import com.example.ui.components.AppIconView
-import com.example.ui.components.DockDragGestureOverlay
-import com.example.ui.components.DockTargetItem
 import com.example.ui.components.EditDockDialog
 import com.example.ui.components.EditQuickWheelDialog
 import com.example.ui.components.FolderContentsDialog
@@ -101,6 +100,26 @@ import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+internal fun getPreferredCoreApps(installedApps: List<InstalledApp>, count: Int = 4): List<InstalledApp> {
+    val preferred = installedApps.filter { app ->
+        val p = app.packageName.lowercase()
+        p.contains("dialer") || p.contains("phone") || p.contains("message") ||
+                p.contains("chrome") || p.contains("browser") || p.contains("camera")
+    }
+    return if (preferred.size >= count) preferred.take(count) else installedApps.take(count)
+}
+
+internal fun getPreferredQuickApps(installedApps: List<InstalledApp>, count: Int = 6): List<InstalledApp> {
+    val preferred = installedApps.filter { app ->
+        val p = app.packageName.lowercase()
+        p.contains("dialer") || p.contains("phone") || p.contains("message") ||
+                p.contains("chrome") || p.contains("browser") || p.contains("camera") ||
+                p.contains("photo") || p.contains("gallery") || p.contains("mail") ||
+                p.contains("map") || p.contains("clock")
+    }
+    return if (preferred.size >= count) preferred.take(count) else installedApps.take(count)
+}
 
 @Composable
 fun HomeScreen(
@@ -145,9 +164,13 @@ fun HomeScreen(
         }
     }
 
-    val timeFormat = SimpleDateFormat("h:mm", Locale.getDefault()).format(currentTime)
-    val amPmFormat = SimpleDateFormat("a", Locale.getDefault()).format(currentTime)
-    val dateFormat = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(currentTime)
+    val timeFormatter = remember { SimpleDateFormat("h:mm", Locale.getDefault()) }
+    val amPmFormatter = remember { SimpleDateFormat("a", Locale.getDefault()) }
+    val dateFormatter = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()) }
+
+    val timeFormat = timeFormatter.format(currentTime)
+    val amPmFormat = amPmFormatter.format(currentTime)
+    val dateFormat = dateFormatter.format(currentTime)
 
     val subtasksByTaskId = remember(tasksWithSubtasks) {
         tasksWithSubtasks.associate { it.task.id to it.subtasks }
@@ -167,21 +190,9 @@ fun HomeScreen(
         if (customDockApps.isNotEmpty()) {
             val appMap = installedApps.associateBy { it.packageName }
             val custom = customDockApps.mapNotNull { appMap[it] }
-            if (custom.isNotEmpty()) custom else {
-                val preferred = installedApps.filter { app ->
-                    val p = app.packageName.lowercase()
-                    p.contains("dialer") || p.contains("phone") || p.contains("message") ||
-                            p.contains("chrome") || p.contains("browser") || p.contains("camera")
-                }
-                if (preferred.size >= 4) preferred.take(4) else installedApps.take(4)
-            }
+            if (custom.isNotEmpty()) custom else getPreferredCoreApps(installedApps, 4)
         } else {
-            val preferred = installedApps.filter { app ->
-                val p = app.packageName.lowercase()
-                p.contains("dialer") || p.contains("phone") || p.contains("message") ||
-                        p.contains("chrome") || p.contains("browser") || p.contains("camera")
-            }
-            if (preferred.size >= 4) preferred.take(4) else installedApps.take(4)
+            getPreferredCoreApps(installedApps, 4)
         }
     }
 
@@ -197,15 +208,7 @@ fun HomeScreen(
         if (found != null && found.packageNames.isNotEmpty()) {
             found
         } else {
-            val preferred = installedApps.filter { app ->
-                val p = app.packageName.lowercase()
-                p.contains("dialer") || p.contains("phone") || p.contains("message") ||
-                        p.contains("chrome") || p.contains("browser") || p.contains("camera") ||
-                        p.contains("photo") || p.contains("gallery") || p.contains("mail") ||
-                        p.contains("map") || p.contains("clock")
-            }.map { it.packageName }.distinct().take(6)
-
-            val fallbackPkgs = if (preferred.isNotEmpty()) preferred else installedApps.take(6).map { it.packageName }
+            val fallbackPkgs = getPreferredQuickApps(installedApps, 6).map { it.packageName }
             CustomAppFolder(
                 id = "favorites_default",
                 name = "Favorites",
@@ -220,8 +223,8 @@ fun HomeScreen(
 
     var openedFolderInHome by remember { mutableStateOf<CustomAppFolder?>(null) }
     var editingFolderInHome by remember { mutableStateOf<CustomAppFolder?>(null) }
-    var isEditDockOpen by remember { mutableStateOf(false) }
-    var isEditQuickWheelOpen by remember { mutableStateOf(false) }
+    var isEditDockOpen by rememberSaveable { mutableStateOf(false) }
+    var isEditQuickWheelOpen by rememberSaveable { mutableStateOf(false) }
 
     // Rotating / Spinning App Wheel state (triggered by long-pressing round App List icon on the left)
     var isSpinWheelActive by remember { mutableStateOf(false) }
@@ -230,6 +233,7 @@ fun HomeScreen(
     var dockPositionInWindow by remember { mutableStateOf(Offset.Zero) }
     var dockSize by remember { mutableStateOf(IntSize.Zero) }
     var appListButtonBoundsInWindow by remember { mutableStateOf(Rect.Zero) }
+    var wheelCenterPositionInWindow by remember { mutableStateOf(Offset.Zero) }
     val haptic = LocalHapticFeedback.current
 
     // Items for the Spinning Wheel Widget
@@ -245,14 +249,7 @@ fun HomeScreen(
             }
         }
         if (favs.isNotEmpty()) favs else {
-            val preferred = installedApps.filter { app ->
-                val p = app.packageName.lowercase()
-                p.contains("dialer") || p.contains("phone") || p.contains("message") ||
-                        p.contains("chrome") || p.contains("browser") || p.contains("camera") ||
-                        p.contains("photo") || p.contains("gallery") || p.contains("mail") ||
-                        p.contains("map") || p.contains("clock")
-            }.take(6)
-            (if (preferred.isNotEmpty()) preferred else installedApps.take(6)).map { app ->
+            getPreferredQuickApps(installedApps, 6).map { app ->
                 WheelAppItem(
                     packageName = app.packageName,
                     title = app.label,
@@ -269,7 +266,8 @@ fun HomeScreen(
     }
 
     fun startSpinningWheel(startWindowPos: Offset) {
-        touchPositionInWindow = startWindowPos
+        // If we know wheel center, position touch at center initially so no app is accidentally hovered right away
+        touchPositionInWindow = if (wheelCenterPositionInWindow != Offset.Zero) wheelCenterPositionInWindow else startWindowPos
         hoveredWheelTargetId = null
         isSpinWheelActive = true
     }
@@ -947,8 +945,13 @@ fun HomeScreen(
                                                 break
                                             }
                                             change.consume()
-                                            val currentWindowPos = appListButtonBoundsInWindow.topLeft + change.position
-                                            updateSpinningWheelDrag(currentWindowPos)
+                                            val dragDelta = change.position - down.position
+                                            val currentPos = if (wheelCenterPositionInWindow != Offset.Zero) {
+                                                wheelCenterPositionInWindow + dragDelta
+                                            } else {
+                                                appListButtonBoundsInWindow.topLeft + change.position
+                                            }
+                                            updateSpinningWheelDrag(currentPos)
                                         }
                                     }
                                 }
@@ -1054,6 +1057,15 @@ fun HomeScreen(
         onDismiss = {
             isSpinWheelActive = false
             hoveredWheelTargetId = null
+        },
+        onCenterPositioned = { center ->
+            wheelCenterPositionInWindow = center
+        },
+        onDragUpdate = { pos ->
+            updateSpinningWheelDrag(pos)
+        },
+        onDragFinish = {
+            finishSpinningWheelGesture()
         }
     )
 
@@ -1070,14 +1082,7 @@ fun HomeScreen(
                 isEditQuickWheelOpen = false
             },
             onResetToDefaults = {
-                val preferred = installedApps.filter { app ->
-                    val p = app.packageName.lowercase()
-                    p.contains("dialer") || p.contains("phone") || p.contains("message") ||
-                            p.contains("chrome") || p.contains("browser") || p.contains("camera") ||
-                            p.contains("photo") || p.contains("gallery") || p.contains("mail") ||
-                            p.contains("map") || p.contains("clock")
-                }.take(6).map { it.packageName }
-                val defaultPkgs = if (preferred.isNotEmpty()) preferred else installedApps.take(6).map { it.packageName }
+                val defaultPkgs = getPreferredQuickApps(installedApps, 6).map { it.packageName }
                 val updatedFolder = favoriteFolder.copy(
                     packageNames = defaultPkgs
                 )

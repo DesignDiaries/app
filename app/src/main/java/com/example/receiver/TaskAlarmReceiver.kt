@@ -26,42 +26,63 @@ class TaskAlarmReceiver : BroadcastReceiver() {
         val taskId = intent.getLongExtra(AlarmScheduler.EXTRA_TASK_ID, -1L)
         if (taskId == -1L) return
 
+        val notificationId = (taskId and 0x7FFFFFFFL).toInt()
+
         when (intent.action) {
             AlarmScheduler.ACTION_COMPLETE_TASK -> {
+                val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {
-                    val db = TaskLaunchDatabase.getInstance(context)
-                    db.taskDao().setTaskCompletion(taskId, true, System.currentTimeMillis())
+                    try {
+                        val db = TaskLaunchDatabase.getInstance(context)
+                        db.taskDao().setTaskCompletion(taskId, true, System.currentTimeMillis())
+                    } catch (_: Throwable) {
+                    } finally {
+                        try {
+                            pendingResult.finish()
+                        } catch (_: Throwable) {}
+                    }
                 }
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(taskId.toInt())
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                notificationManager?.cancel(notificationId)
             }
 
             AlarmScheduler.ACTION_SNOOZE_TASK -> {
                 val snoozeMinutes = intent.getIntExtra(AlarmScheduler.EXTRA_SNOOZE_MINUTES, 10)
                 val newTriggerTime = System.currentTimeMillis() + (snoozeMinutes * 60 * 1000L)
+                val pendingResult = goAsync()
                 CoroutineScope(Dispatchers.IO).launch {
-                    val db = TaskLaunchDatabase.getInstance(context)
-                    val task = db.taskDao().getTaskById(taskId)
-                    if (task != null) {
-                        val updated = task.copy(reminderTime = newTriggerTime)
-                        db.taskDao().updateTask(updated)
-                        AlarmScheduler.scheduleReminder(context, updated)
+                    try {
+                        val db = TaskLaunchDatabase.getInstance(context)
+                        val task = db.taskDao().getTaskById(taskId)
+                        if (task != null) {
+                            val updated = task.copy(reminderTime = newTriggerTime)
+                            db.taskDao().updateTask(updated)
+                            AlarmScheduler.scheduleReminder(context, updated)
+                        }
+                    } catch (_: Throwable) {
+                    } finally {
+                        try {
+                            pendingResult.finish()
+                        } catch (_: Throwable) {}
                     }
                 }
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.cancel(taskId.toInt())
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                notificationManager?.cancel(notificationId)
             }
 
             AlarmScheduler.ACTION_TASK_REMINDER -> {
                 val title = intent.getStringExtra(AlarmScheduler.EXTRA_TASK_TITLE) ?: "Task Reminder"
                 val notes = intent.getStringExtra(AlarmScheduler.EXTRA_TASK_NOTES) ?: ""
-                showNotification(context, taskId, title, notes)
+                try {
+                    showNotification(context, taskId, title, notes)
+                } catch (_: Throwable) {}
             }
         }
     }
 
     private fun showNotification(context: Context, taskId: Long, title: String, notes: String) {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val notificationId = (taskId and 0x7FFFFFFFL).toInt()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -75,13 +96,17 @@ class TaskAlarmReceiver : BroadcastReceiver() {
             notificationManager.createNotificationChannel(channel)
         }
 
+        val contentRequestCode = ((taskId * 13 + 3) and 0x7FFFFFFFL).toInt()
+        val doneRequestCode = ((taskId * 13 + 1) and 0x7FFFFFFFL).toInt()
+        val snoozeRequestCode = ((taskId * 13 + 2) and 0x7FFFFFFFL).toInt()
+
         // Tap to open app
         val contentIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val contentPendingIntent = PendingIntent.getActivity(
             context,
-            taskId.toInt(),
+            contentRequestCode,
             contentIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -93,7 +118,7 @@ class TaskAlarmReceiver : BroadcastReceiver() {
         }
         val donePendingIntent = PendingIntent.getBroadcast(
             context,
-            (taskId * 10 + 1).toInt(),
+            doneRequestCode,
             doneIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -106,7 +131,7 @@ class TaskAlarmReceiver : BroadcastReceiver() {
         }
         val snooze10PendingIntent = PendingIntent.getBroadcast(
             context,
-            (taskId * 10 + 2).toInt(),
+            snoozeRequestCode,
             snooze10Intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -122,6 +147,6 @@ class TaskAlarmReceiver : BroadcastReceiver() {
             .addAction(android.R.drawable.ic_popup_reminder, "+10 Min", snooze10PendingIntent)
             .build()
 
-        notificationManager.notify(taskId.toInt(), notification)
+        notificationManager.notify(notificationId, notification)
     }
 }

@@ -97,5 +97,85 @@ class ExampleRobolectricTest {
     vm.removeAppFromDock("com.example.app1")
     assertTrue(!vm.customDockApps.value.contains("com.example.app1"))
   }
+
+  @Test
+  fun `test empty and blank inputs do not crash and handle gracefully`() = kotlinx.coroutines.test.runTest {
+    // Empty NLP input
+    val emptyResult = NaturalLanguageParser.parse("")
+    assertEquals("", emptyResult.cleanTitle)
+    assertEquals(Priority.MEDIUM, emptyResult.priority)
+
+    val blankResult = NaturalLanguageParser.parse("    ")
+    assertEquals("", blankResult.cleanTitle)
+
+    // Only tags/symbols input
+    val onlyTagResult = NaturalLanguageParser.parse("#work !high")
+    assertEquals("", onlyTagResult.cleanTitle)
+    assertEquals(Priority.HIGH, onlyTagResult.priority)
+    assertTrue(onlyTagResult.tags.contains("work"))
+
+    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.LauncherViewModel(application)
+
+    // Empty quick add submission
+    vm.onQuickAddTextChanged("")
+    vm.submitQuickAdd()
+    assertEquals("", vm.quickAddText.value)
+
+    vm.onQuickAddTextChanged("   ")
+    vm.submitQuickAdd()
+    assertEquals("", vm.quickAddText.value)
+
+    // Invalid / empty JSON import
+    val emptyImportResult = vm.importBackupJson("")
+    assertEquals(false, emptyImportResult)
+
+    val invalidJsonResult = vm.importBackupJson("{ malformed json }")
+    assertEquals(false, invalidJsonResult)
+
+    // Scratchpad with empty content
+    vm.updateScratchpadNotes("")
+    val created = vm.convertScratchpadToTasks()
+    assertEquals(0, created)
+  }
+
+  @Test
+  fun `test rapid taps on Pomodoro timer and quick add`() {
+    val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+    val vm = com.example.ui.viewmodel.LauncherViewModel(application)
+
+    // Rapid alternating toggles
+    vm.togglePomodoro("Test Task")
+    vm.togglePomodoro("Test Task")
+    vm.togglePomodoro("Test Task")
+    // Should be in a stable state
+    assertTrue(vm.pomodoroState.value.secondsRemaining > 0)
+
+    // Reset Pomodoro
+    vm.resetPomodoro()
+    assertEquals(false, vm.pomodoroState.value.isRunning)
+
+    // Rapid submitQuickAdd calls
+    vm.onQuickAddTextChanged("Rapid Task Test")
+    vm.submitQuickAdd()
+    vm.submitQuickAdd()
+    vm.submitQuickAdd()
+    // Text cleared immediately on first tap
+    assertEquals("", vm.quickAddText.value)
+  }
+
+  @Test
+  fun `test alarm scheduler does not crash under permission restrictions`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val testTask = com.example.data.model.TaskEntity(
+      id = 12345L,
+      title = "Test Alarm Task",
+      reminderTime = System.currentTimeMillis() + 60000L
+    )
+
+    // Scheduling and cancelling should handle all API levels without throwing
+    com.example.service.AlarmScheduler.scheduleReminder(context, testTask)
+    com.example.service.AlarmScheduler.cancelReminder(context, testTask.id)
+  }
 }
 

@@ -122,23 +122,27 @@ class LauncherRepository(private val context: Context) {
             val arr = JSONArray(jsonStr)
             val list = mutableListOf<CustomAppFolder>()
             for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val pkgsArr = obj.optJSONArray("packageNames") ?: JSONArray()
-                val pkgs = mutableListOf<String>()
-                for (j in 0 until pkgsArr.length()) {
-                    pkgs.add(pkgsArr.getString(j))
-                }
-                list.add(
-                    CustomAppFolder(
-                        id = obj.optString("id", java.util.UUID.randomUUID().toString()),
-                        name = obj.getString("name"),
-                        iconName = obj.optString("iconName", "FOLDER"),
-                        colorHex = obj.optString("colorHex", "#6366F1"),
-                        packageNames = pkgs,
-                        isPinnedToDock = obj.optBoolean("isPinnedToDock", false),
-                        isPreset = obj.optBoolean("isPreset", false)
+                try {
+                    val obj = arr.getJSONObject(i)
+                    val pkgsArr = obj.optJSONArray("packageNames") ?: JSONArray()
+                    val pkgs = mutableListOf<String>()
+                    for (j in 0 until pkgsArr.length()) {
+                        val pkg = pkgsArr.optString(j)
+                        if (!pkg.isNullOrBlank()) pkgs.add(pkg)
+                    }
+                    val folderName = obj.optString("name", "").ifBlank { "Folder ${i + 1}" }
+                    list.add(
+                        CustomAppFolder(
+                            id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                            name = folderName,
+                            iconName = obj.optString("iconName", "FOLDER"),
+                            colorHex = obj.optString("colorHex", "#6366F1"),
+                            packageNames = pkgs,
+                            isPinnedToDock = obj.optBoolean("isPinnedToDock", false),
+                            isPreset = obj.optBoolean("isPreset", false)
+                        )
                     )
-                )
+                } catch (_: Exception) {}
             }
             list
         } catch (_: Exception) {
@@ -374,43 +378,50 @@ class LauncherRepository(private val context: Context) {
             if (root.has("tasks")) {
                 val tasksArr = root.getJSONArray("tasks")
                 for (i in 0 until tasksArr.length()) {
-                    val obj = tasksArr.getJSONObject(i)
-                    val task = TaskEntity(
-                        title = obj.getString("title"),
-                        notes = obj.optString("notes", ""),
-                        isCompleted = obj.optBoolean("isCompleted", false),
-                        priority = Priority.fromString(obj.optString("priority", "MEDIUM")),
-                        dueDate = obj.optLong("dueDate", -1L).takeIf { it > 0 },
-                        dueTimeMinutes = obj.optInt("dueTimeMinutes", -1).takeIf { it >= 0 },
-                        listId = obj.optLong("listId", 1L),
-                        tags = obj.optString("tags", ""),
-                        recurrence = Recurrence.fromString(obj.optString("recurrence", "NONE")),
-                        linkedPackageName = obj.optString("linkedPackageName", "").takeIf { it.isNotBlank() }
-                    )
-                    taskDao.insertTask(task)
+                    try {
+                        val obj = tasksArr.getJSONObject(i)
+                        val title = obj.optString("title", "").ifBlank { "Untitled Task" }
+                        val task = TaskEntity(
+                            title = title,
+                            notes = obj.optString("notes", ""),
+                            isCompleted = obj.optBoolean("isCompleted", false),
+                            priority = Priority.fromString(obj.optString("priority", "MEDIUM")),
+                            dueDate = obj.optLong("dueDate", -1L).takeIf { it > 0 },
+                            dueTimeMinutes = obj.optInt("dueTimeMinutes", -1).takeIf { it >= 0 },
+                            listId = obj.optLong("listId", 1L),
+                            tags = obj.optString("tags", ""),
+                            recurrence = Recurrence.fromString(obj.optString("recurrence", "NONE")),
+                            linkedPackageName = obj.optString("linkedPackageName", "").takeIf { it.isNotBlank() }
+                        )
+                        taskDao.insertTask(task)
+                    } catch (_: Exception) {}
                 }
             }
             if (root.has("customAppFolders")) {
                 val foldersArr = root.getJSONArray("customAppFolders")
                 val restoredFolders = mutableListOf<CustomAppFolder>()
                 for (i in 0 until foldersArr.length()) {
-                    val fObj = foldersArr.getJSONObject(i)
-                    val pkgsArr = fObj.optJSONArray("packageNames") ?: JSONArray()
-                    val pkgs = mutableListOf<String>()
-                    for (j in 0 until pkgsArr.length()) {
-                        pkgs.add(pkgsArr.getString(j))
-                    }
-                    restoredFolders.add(
-                        CustomAppFolder(
-                            id = fObj.optString("id", java.util.UUID.randomUUID().toString()),
-                            name = fObj.getString("name"),
-                            iconName = fObj.optString("iconName", "FOLDER"),
-                            colorHex = fObj.optString("colorHex", "#6366F1"),
-                            packageNames = pkgs,
-                            isPinnedToDock = fObj.optBoolean("isPinnedToDock", false),
-                            isPreset = fObj.optBoolean("isPreset", false)
+                    try {
+                        val fObj = foldersArr.getJSONObject(i)
+                        val pkgsArr = fObj.optJSONArray("packageNames") ?: JSONArray()
+                        val pkgs = mutableListOf<String>()
+                        for (j in 0 until pkgsArr.length()) {
+                            val pkg = pkgsArr.optString(j)
+                            if (!pkg.isNullOrBlank()) pkgs.add(pkg)
+                        }
+                        val name = fObj.optString("name", "").ifBlank { "Folder ${i + 1}" }
+                        restoredFolders.add(
+                            CustomAppFolder(
+                                id = fObj.optString("id", java.util.UUID.randomUUID().toString()),
+                                name = name,
+                                iconName = fObj.optString("iconName", "FOLDER"),
+                                colorHex = fObj.optString("colorHex", "#6366F1"),
+                                packageNames = pkgs,
+                                isPinnedToDock = fObj.optBoolean("isPinnedToDock", false),
+                                isPreset = fObj.optBoolean("isPreset", false)
+                            )
                         )
-                    )
+                    } catch (_: Exception) {}
                 }
                 persistCustomFolders(restoredFolders)
             }
@@ -418,7 +429,8 @@ class LauncherRepository(private val context: Context) {
                 val dockAppsArr = root.getJSONArray("customDockApps")
                 val list = mutableListOf<String>()
                 for (i in 0 until dockAppsArr.length()) {
-                    list.add(dockAppsArr.getString(i))
+                    val pkg = dockAppsArr.optString(i)
+                    if (!pkg.isNullOrBlank()) list.add(pkg)
                 }
                 setDockApps(list)
             }

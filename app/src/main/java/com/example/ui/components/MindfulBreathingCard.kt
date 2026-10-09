@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,8 +56,8 @@ import kotlinx.coroutines.delay
 fun MindfulBreathingCard(
     modifier: Modifier = Modifier
 ) {
-    var isRunning by remember { mutableStateOf(false) }
-    var phaseIndex by remember { mutableIntStateOf(0) } // 0 = Inhale, 1 = Hold, 2 = Exhale, 3 = Hold
+    var isRunning by rememberSaveable { mutableStateOf(false) }
+    var phaseIndex by rememberSaveable { mutableIntStateOf(0) } // 0 = Inhale, 1 = Hold, 2 = Exhale, 3 = Hold
     val phases = listOf("Inhale (4s)", "Hold (4s)", "Exhale (4s)", "Hold (4s)")
 
     LaunchedEffect(isRunning) {

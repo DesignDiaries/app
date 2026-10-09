@@ -427,5 +427,11 @@ private fun evaluateSimpleMath(input: String): String? {
         else -> return null
     }
 
-    return if (res % 1.0 == 0.0) res.toLong().toString() else String.format(java.util.Locale.getDefault(), "%.2f", res)
+    if (!res.isFinite()) return null
+
+    return if (res % 1.0 == 0.0 && res <= Long.MAX_VALUE && res >= Long.MIN_VALUE) {
+        res.toLong().toString()
+    } else {
+        String.format(java.util.Locale.getDefault(), "%.2f", res)
+    }
 }

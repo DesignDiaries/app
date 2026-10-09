@@ -13,14 +13,22 @@ import kotlinx.coroutines.launch
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
-                val db = TaskLaunchDatabase.getInstance(context)
-                val allTasks = db.taskDao().getAllTasks().firstOrNull() ?: emptyList()
-                val now = System.currentTimeMillis()
-                for (task in allTasks) {
-                    if (!task.isCompleted && task.reminderTime != null && task.reminderTime > now) {
-                        AlarmScheduler.scheduleReminder(context, task)
+                try {
+                    val db = TaskLaunchDatabase.getInstance(context)
+                    val allTasks = db.taskDao().getAllTasks().firstOrNull() ?: emptyList()
+                    val now = System.currentTimeMillis()
+                    for (task in allTasks) {
+                        if (!task.isCompleted && task.reminderTime != null && task.reminderTime > now) {
+                            AlarmScheduler.scheduleReminder(context, task)
+                        }
                     }
+                } catch (_: Throwable) {
+                } finally {
+                    try {
+                        pendingResult.finish()
+                    } catch (_: Throwable) {}
                 }
             }
         }

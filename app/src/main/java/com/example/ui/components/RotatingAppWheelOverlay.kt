@@ -11,6 +11,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -93,6 +96,9 @@ fun RotatingAppWheelOverlay(
     onLaunchApp: (String) -> Unit,
     onOpenEditWheel: () -> Unit,
     onDismiss: () -> Unit,
+    onCenterPositioned: ((Offset) -> Unit)? = null,
+    onDragUpdate: ((Offset) -> Unit)? = null,
+    onDragFinish: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (!isActive) return
@@ -131,14 +137,14 @@ fun RotatingAppWheelOverlay(
 
     // Calculate hover selection based on touchPosition relative to wheelCenter
     LaunchedEffect(touchPosition, wheelCenterInWindow, wheelApps) {
-        if (wheelCenterInWindow == Offset.Zero || wheelApps.isEmpty()) return@LaunchedEffect
+        if (wheelCenterInWindow == Offset.Zero || wheelApps.isEmpty() || touchPosition == Offset.Zero) return@LaunchedEffect
 
         val dx = touchPosition.x - wheelCenterInWindow.x
         val dy = touchPosition.y - wheelCenterInWindow.y
         val dist = hypot(dx, dy)
 
-        val editThresholdPx = with(density) { 38.dp.toPx() }
-        val maxReachPx = with(density) { 190.dp.toPx() }
+        val editThresholdPx = with(density) { 46.dp.toPx() }
+        val maxReachPx = with(density) { 220.dp.toPx() }
 
         if (dist <= editThresholdPx) {
             // Finger in Center Hub near Edit button
@@ -146,14 +152,14 @@ fun RotatingAppWheelOverlay(
                 onHoverChanged("EDIT_WHEEL")
             }
         } else if (dist <= maxReachPx) {
-            // Calculate angle from center (-PI to PI)
-            var angle = atan2(dy, dx)
-            // Adjust so top (12 o'clock) is 0 radians
-            var normalizedAngle = angle + (PI / 2).toFloat()
-            if (normalizedAngle < 0) normalizedAngle += (2 * PI).toFloat()
+            // Calculate angle from center (-PI to PI) where 0 is (1, 0)
+            val angle = atan2(dy, dx)
+            var normalizedAngle = angle + (PI / 2.0).toFloat()
+            while (normalizedAngle < 0f) normalizedAngle += (2.0 * PI).toFloat()
+            while (normalizedAngle >= (2.0 * PI).toFloat()) normalizedAngle -= (2.0 * PI).toFloat()
 
-            val step = (2 * PI).toFloat() / totalApps
-            val rawIndex = ((normalizedAngle + step / 2) / step).toInt() % totalApps
+            val step = (2.0 * PI).toFloat() / totalApps
+            val rawIndex = (((normalizedAngle + step / 2f) / step).toInt()) % totalApps
             val selectedApp = wheelApps.getOrNull(rawIndex)
             val newTargetId = selectedApp?.packageName
 
@@ -174,8 +180,27 @@ fun RotatingAppWheelOverlay(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.55f))
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { onDismiss() })
+            .pointerInput(wheelApps, hoveredTargetId) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // If tap on background outside or dragged on screen
+                    onDragUpdate?.invoke(down.position)
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                        if (change == null || change.changedToUp()) {
+                            change?.consume()
+                            if (onDragFinish != null) {
+                                onDragFinish.invoke()
+                            } else {
+                                onDismiss()
+                            }
+                            break
+                        }
+                        change.consume()
+                        onDragUpdate?.invoke(change.position)
+                    }
+                }
             }
             .testTag("rotating_app_wheel_overlay")
     ) {
@@ -205,7 +230,7 @@ fun RotatingAppWheelOverlay(
                     text = when {
                         isEditHovered -> "Release to Customize Quick Wheel ✏️"
                         selectedApp != null -> "Release to launch \"${selectedApp.title}\" 🚀"
-                        else -> "Drag finger around wheel to quick-select • Release to launch"
+                        else -> "Drag or tap around wheel to quick-select • Release to launch"
                     },
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = if (hoveredTargetId != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -224,16 +249,19 @@ fun RotatingAppWheelOverlay(
                     scaleY = entranceScale.value
                 }
                 .onGloballyPositioned { coords ->
-                    wheelCenterInWindow = coords.boundsInWindow().center
+                    val center = coords.boundsInWindow().center
+                    wheelCenterInWindow = center
+                    onCenterPositioned?.invoke(center)
                 },
             contentAlignment = Alignment.Center
         ) {
             val primaryColor = MaterialTheme.colorScheme.primary
             val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
 
-            // Orbital Ring Decorative Track
+            // Orbital Ring Decorative Track and Active Sector Glow
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val centerOffset = Offset(size.width / 2, size.height / 2)
+
                 // Outer orbital path
                 drawCircle(
                     color = outlineColor,
@@ -254,6 +282,26 @@ fun RotatingAppWheelOverlay(
                     radius = radiusPx * 1.25f,
                     center = centerOffset
                 )
+
+                // If an item is hovered, draw a vibrant pointer ray connecting center to the hovered app position
+                val activeIndex = wheelApps.indexOfFirst { it.packageName == hoveredTargetId }
+                if (activeIndex != -1) {
+                    val baseAngle = (-PI / 2.0) + (2.0 * PI * activeIndex / totalApps)
+                    val currentAngle = baseAngle + Math.toRadians(entranceSpin.value.toDouble())
+                    val targetX = centerOffset.x + (radiusPx * cos(currentAngle)).toFloat()
+                    val targetY = centerOffset.y + (radiusPx * sin(currentAngle)).toFloat()
+
+                    drawLine(
+                        brush = Brush.linearGradient(
+                            colors = listOf(primaryColor.copy(alpha = 0.3f), primaryColor.copy(alpha = 0.9f)),
+                            start = centerOffset,
+                            end = Offset(targetX, targetY)
+                        ),
+                        start = centerOffset,
+                        end = Offset(targetX, targetY),
+                        strokeWidth = 3.5.dp.toPx()
+                    )
+                }
             }
 
             // Center Hub
@@ -350,6 +398,10 @@ fun RotatingAppWheelOverlay(
                             scaleX = itemScale
                             scaleY = itemScale
                         }
+                        .clickable {
+                            onLaunchApp(item.packageName)
+                            onDismiss()
+                        }
                         .testTag("wheel_app_${item.packageName}")
                 ) {
                     Box(
@@ -411,18 +463,20 @@ fun RotatingAppWheelOverlay(
             }
         }
 
-        // Active Finger Drag Indicator Ring
-        Box(
-            modifier = Modifier
-                .offset {
-                    IntOffset(
-                        (touchPosition.x - with(density) { 22.dp.toPx() }).roundToInt(),
-                        (touchPosition.y - with(density) { 22.dp.toPx() }).roundToInt()
-                    )
-                }
-                .size(44.dp)
-                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape)
-        )
+        // Active Finger Drag Indicator Ring (shows when dragging outside center)
+        if (touchPosition != Offset.Zero && touchPosition != wheelCenterInWindow) {
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            (touchPosition.x - with(density) { 22.dp.toPx() }).roundToInt(),
+                            (touchPosition.y - with(density) { 22.dp.toPx() }).roundToInt()
+                        )
+                    }
+                    .size(44.dp)
+                    .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), CircleShape)
+            )
+        }
     }
 }
